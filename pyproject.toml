@@ -27,11 +27,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy<2", # still having problems with older torch versions
+    "numpy",
     "pandas",
     "scikit-learn",
-    "torch; platform_system != 'Linux'",
-    # "torchvision", # if needed
     "matplotlib",
     "seaborn",
 ]
@@ -86,7 +84,7 @@ lint = [
 modelname = "modelname.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["modelname*", "datasets*"]
+include = ["qrumi*"]
 namespaces = false
 
 [tool.isort]
