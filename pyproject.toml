@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "setuptools_scm[tool]>=7"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "modelname"
+name = "qrumi"
 version = "0.0.1"
 description = ""
 keywords = [""]
@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "pandas",
+    "networkx",
     "scikit-learn",
     "matplotlib",
     "seaborn",
@@ -81,7 +82,7 @@ lint = [
 ]
 
 [project.scripts]
-modelname = "modelname.__main__:main"
+qrumi = "qrumi.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["qrumi*"]
