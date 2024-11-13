@@ -236,7 +236,8 @@ class QuantumState:
         payoffs = payoff_matrix.flatten()
         qubits = self.get_all_possible_decision_qubits()
         total_payoff = 0.0
-        for qubit, payoff in zip(qubits, payoffs):
+        # Disable ruff check here to support python<3.10
+        for qubit, payoff in zip(qubits, payoffs):  # noqa: B905
             dotprod = np.dot(self.qstate_vec, qubit)
             total_payoff += payoff * dotprod**2
         return np.round(total_payoff, 5)
