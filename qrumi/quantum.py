@@ -20,7 +20,7 @@ class QuantumBit:
     def check_qubit(self) -> None:
         """Check input parameters if they satisfy the alpha^2 + beta^2 = 1."""
         validity = True
-        if self.alpha**2 + self.beta**2 != 1.0:
+        if self.alpha**2 + self.beta**2 != 1:
             validity = False
 
         if not validity:
@@ -34,10 +34,10 @@ class QuantumBit:
         measured = 0 if prob_bit <= self.alpha**2 else 1
         return measured
 
-    def tensordot(self, other: QuantumBit | NDArray) -> NDArray:
+    def kronecker(self, other: QuantumBit | NDArray) -> NDArray:
         """Do a matrix multiplication for joint representation in Hilbert space with the other qubit."""
         other_state = other.state if isinstance(other, QuantumBit) else other
-        return np.tensordot(self.state, other_state, axes=0).flatten()
+        return np.kron(self.state, other_state)
 
 
 class QuantumRegister:
@@ -52,7 +52,7 @@ class QuantumRegister:
         hilbert_product = self.qubits[-1].state
         for idx in range(2, len(self.qubits) + 1):
             next_qubit = self.qubits[-idx]
-            hilbert_product = next_qubit.tensordot(hilbert_product)
+            hilbert_product = next_qubit.kronecker(hilbert_product)
         self.joint_state = hilbert_product
         return hilbert_product
 
@@ -76,7 +76,7 @@ class QuantumDecision:
 
         if self.theta > np.pi:
             validity = False
-        if self.theta < 0.0:
+        if self.theta < 0:
             validity = False
 
         if not validity:
@@ -91,10 +91,10 @@ class QuantumDecision:
             x12 = np.sin(self.theta / 2.0)
             x21 = -1.0 * np.sin(self.theta / 2.0)
             x22 = np.cos(self.theta / 2.0) * np.exp(-1.0j * self.fi)
-            self.unitary_matrix = np.array([[x11, x12], [x21, x22]])
+            self.unitary_matrix = np.round(np.array([[x11, x12], [x21, x22]]), 10)
         return self.unitary_matrix
 
-    def tensordot(self, other: QuantumDecision | NDArray) -> NDArray:
+    def kronecker(self, other: QuantumDecision | NDArray) -> NDArray:
         """Do a matrix multiplication for joint representation in Hilbert space with the other qubit."""
         if self.unitary_matrix is None:
             self.unitary_matrix = self.calculate_unitary_matrix()
@@ -104,9 +104,7 @@ class QuantumDecision:
             other_unitary = other.unitary_matrix
         else:
             other_unitary = other
-        return np.tensordot(self.unitary_matrix, other_unitary, axes=0).reshape(
-            self.unitary_matrix.shape[0] ** 2, self.unitary_matrix.shape[1] ** 2
-        )
+        return np.kron(self.unitary_matrix, other_unitary)
 
 
 class QuantumDecisionNplayers(QuantumDecision):
@@ -155,7 +153,7 @@ class QuantumEntanglenment:
         validity = True
         if self.gamma > np.pi / 2.0:
             validity = False
-        if self.gamma < 0.0:
+        if self.gamma < 0:
             validity = False
 
         if not validity:
@@ -165,14 +163,16 @@ class QuantumEntanglenment:
 
     def calculate_entanglement_matrix(self) -> NDArray:
         """Calculate a entanglement matrix based on the given parameters and return as numpy array."""
-        defect = QuantumDecision(np.pi, 0.0)
-        unitary_d = defect.calculate_unitary_matrix()
-        unitary_j = np.exp(
-            1.0j * self.gamma * np.tensordot(unitary_d, unitary_d, axes=0)
-        )
-        self.unitary = unitary_j.reshape(
-            unitary_d.shape[0] ** 2, unitary_d.shape[1] ** 2
-        )
+        if self.unitary is None:
+            defect = QuantumDecision(np.pi, 0.0)
+            unitary_d = defect.calculate_unitary_matrix()
+            ident = np.identity(2)
+            ident_kron = np.kron(ident, ident)
+            unitary_kron = np.kron(unitary_d, unitary_d)
+            coef = ident_kron * np.cos(self.gamma / 2) + 1.0j * unitary_kron * np.sin(
+                self.gamma / 2
+            )
+            self.unitary = np.round(coef, 10)
         return self.unitary
 
     def calculate_hermitian_adjoint(self) -> NDArray:
@@ -190,6 +190,10 @@ class QuantumState:
         self.gamma = gamma
         self.decisions = decisions
         self.entanglement = QuantumEntanglenment(self.gamma)
+        ent_mat = self.entanglement.calculate_entanglement_matrix()
+        self.qstate_vec: NDArray
+        init_qbits = self.get_initial_qubits()
+        self.qstate_vec = np.matmul(ent_mat, init_qbits)
 
     def get_initial_qubits(self) -> NDArray:
         """Create and calculate the tensor product of the initial qubits |00>."""
@@ -197,28 +201,42 @@ class QuantumState:
         qreg = QuantumRegister(qubits)
         return qreg.calculate_joint_state()
 
-    def calculate_tensordot_unitaries(self) -> NDArray:
+    def calculate_kronecker_unitaries(self) -> NDArray:
         """Calculate the tensor product of unitary operators from given quantum decisions."""
-        unitary_product = self.decisions[-1]
-        for idx in range(2, len(self.decisions) + 1):
-            next_decision = self.decisions[-idx]
-            unitary_product = next_decision.tensordot(unitary_product)
-        if isinstance(unitary_product, QuantumDecision):
-            unitary_product = unitary_product.calculate_unitary_matrix()
-        return unitary_product
+        curr_product = self.decisions[0].calculate_unitary_matrix()
+        for idx in range(1, len(self.decisions)):
+            next_decision = self.decisions[idx].calculate_unitary_matrix()
+            curr_product = np.kron(curr_product, next_decision)
+        return curr_product
 
     def calculate_quantum_state(self) -> NDArray:
         """Calculate quantum state as a vector, after the quantum gate formula applies."""
         ent_mat = self.entanglement.calculate_entanglement_matrix()
         ent_mat_h = self.entanglement.calculate_hermitian_adjoint()
-        unitary_product = self.calculate_tensordot_unitaries()
+        unitary_product = self.calculate_kronecker_unitaries()
         init_qbits = self.get_initial_qubits()
 
         prod1 = np.matmul(ent_mat_h, unitary_product)
         prod2 = np.matmul(prod1, ent_mat)
-        result = np.matmul(prod2, init_qbits)
-        return result
+        self.qstate_vec = np.matmul(prod2, init_qbits)
+        return self.qstate_vec
 
-    # def calculate_payoff_for_agent(self, payoff_matrix: NDArray) -> float:
-    #     """"""
-    #     return 0.0
+    @staticmethod
+    def get_all_possible_decision_qubits() -> NDArray:
+        """Create and calculate the tensor product for the all  qubits |00>."""
+        qreg00 = QuantumRegister([QuantumBit(1.0, 0.0), QuantumBit(1.0, 0.0)])
+        qreg01 = QuantumRegister([QuantumBit(1.0, 0.0), QuantumBit(0.0, 1.0)])
+        qreg10 = QuantumRegister([QuantumBit(0.0, 1.0), QuantumBit(1.0, 0.0)])
+        qreg11 = QuantumRegister([QuantumBit(0.0, 1.0), QuantumBit(0.0, 1.0)])
+        qregs = [qreg00, qreg01, qreg10, qreg11]
+        return np.array([qreg.calculate_joint_state() for qreg in qregs])
+
+    def calculate_expected_payoff(self, payoff_matrix: NDArray) -> float:
+        """Calculate the payoff for first agent in current state from a given payoff matrix."""
+        payoffs = payoff_matrix.flatten()
+        qubits = self.get_all_possible_decision_qubits()
+        total_payoff = 0.0
+        for qubit, payoff in zip(qubits, payoffs, strict=True):
+            dotprod = np.dot(self.qstate_vec, qubit)
+            total_payoff += payoff * dotprod**2
+        return np.round(total_payoff, 5)
