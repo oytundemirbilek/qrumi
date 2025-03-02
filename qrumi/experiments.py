@@ -31,11 +31,6 @@ class Experiment:
             main_decisions.update({"Q": QuantumDecision(0, np.pi / 2.0)})
         return main_decisions
 
-    def calculate_min_expected_outcome(self) -> float:
-        """"""
-        res_payoffs = self.calculate_outcome_matrix()
-        return float(np.max(np.min(res_payoffs, axis=0)))
-
     def calculate_outcome_matrix(self) -> np.ndarray:
         """_summary_
 
@@ -45,7 +40,7 @@ class Experiment:
             _description_
         """
         payoff_mat = self.cournot.calculate_payoff_matrix()
-        print(payoff_mat)
+        # print(payoff_mat)
         # payoff_mat = np.array([[3, 0], [5, 1]])
 
         res_mat = []
@@ -59,6 +54,11 @@ class Experiment:
             res_mat.append(res)
 
         return np.array(res_mat).real
+
+    def calculate_min_expected_outcome(self) -> float:
+        """"""
+        res_payoffs = self.calculate_outcome_matrix()
+        return float(np.max(np.min(res_payoffs, axis=0)))
 
     def experiment_gammas(
         self, gammas: np.ndarray | None = None
@@ -86,10 +86,10 @@ class Experiment:
         results, gammas = self.experiment_gammas()
         self.visualize_gamma_experiment(results, gammas)
 
-        cournot_model = CournotModel(100, 20, 1.5, 16, 30)
-        self.cournot = CournotDuopoly()
-        self.experiment_gammas()
-        self.visualize_gamma_experiment(results, gammas)
+        # cournot_model = CournotModel(100, 20, 1.5, 20, 30)
+        # self.cournot = CournotDuopoly(cournot_model)
+        # self.experiment_gammas()
+        # self.visualize_gamma_experiment(results, gammas)
 
     def visualize_outcome_matrix(
         self, outcomes: np.ndarray, ax: Axes | None = None
@@ -131,9 +131,9 @@ class Experiment:
         # ax.set_title(
         #     "Effect of quantum entanglement\non minimum expected payoff for retailer X"
         # )
-        ax.set_xlabel("$\gamma$")
+        ax.set_xlabel(r"$\gamma$")
         ax.set_ylabel("Minimum expected payoff")
-        ax.xaxis.set_major_formatter(tck.FormatStrFormatter("%g$\pi$"))
+        ax.xaxis.set_major_formatter(tck.FormatStrFormatter(r"%g$\pi$"))
         ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.05))
         plt.show()
         plt.tight_layout()
