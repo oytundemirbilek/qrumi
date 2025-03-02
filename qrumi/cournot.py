@@ -1,161 +1,117 @@
-"""Module to simulate a newsvendor problem with quantum entanglement."""
-
-# Model setup from Prisoner’s dilemma on competing retailers’ investment in
-# green supply chain management paper.
-
-from __future__ import annotations
+"""_summary_"""
 
 import numpy as np
-from numpy.typing import NDArray
 
 
-class Retailer:
-    """Class represents a retailer and its related functions."""
-
-    def __init__(
-        self,
-        unit_cost: float,
-        coop_cost: float,
-        coop_effect: float,
-    ):
-        self.unit_cost = unit_cost  # c_x/c_y
-        self.coop_cost = coop_cost  # g_x/g_y
-        self.coop_effect = coop_effect  # G
-
-        # To be calculated:
-        self.demand = 0.0  # q_x/q_y
-        self.retail_price = 0.0  # p_x/p_y
-        self.profit = 0  # pi_x/pi_y
-
-    def calculate_optimal_retail_price(self, beta: float) -> float:
-        """Calculate optimal retail price for the retailer, based on current condition."""
-        nom = (
-            1
-            + self.unit_cost
-            + self.coop_cost
-            - beta
-            + self.coop_effect * (1 - beta**2)
-        )
-        denom = 2 - beta
-        self.retail_price = nom / denom
-        return self.retail_price
-
-    def calculate_demand(self, beta: float, other_price: float) -> float:
-        """Calculate expected demand for the retailer."""
-        self.demand = (
-            1 / (1 + beta)
-            - 1 / (1 - beta**2) * self.retail_price
-            + beta * other_price * 1 / (1 - beta**2)
-            + self.coop_effect
-        )
-        return self.demand
-
-    def calculate_profit(self) -> float:
-        """Calculate profit."""
-        self.profit = self.demand * (
-            self.retail_price - self.unit_cost - self.coop_cost
-        )
-        return self.profit
-
-
-class InvestmentModel:
-    """Class that represents the situation between the retailers, manufacturer and market."""
+class CournotModel:
+    """"""
 
     def __init__(
         self,
-        beta: float = 0.5,
-        unit_cost: float = 1.0,
-        coop_effects: tuple[float, float] = (1.0, 1.0),
-        coop_costs: tuple[float, float] = (1.0, 1.0),
+        baseline_demand: float,
+        baseline_cost: float,
+        demand_slope: float,
+        demand_boost: float,
+        cost_increase: float,
     ) -> None:
+        self.baseline_demand = baseline_demand  # a
+        self.baseline_cost = baseline_cost  # c
+        self.demand_slope = demand_slope  # b
+        self.demand_boost = demand_boost  # d0
+        self.cost_increase = cost_increase  # k0
+
+    def verify_dilemma(self) -> bool:
+        """_summary_
+
+        Returns
+        -------
+        bool
+            _description_
         """
-        Initialize class.
+        return True
+
+
+class Firm:
+    """_summary_"""
+
+    def __init__(self, cournot_model: CournotModel) -> None:
+        """_summary_
 
         Parameters
         ----------
-        beta: float between 0 and 1.
-            degree of differentiation between the retailers. 0 means two retailers are independent.
-            1 means products sold by the two retailers are fully substitutable.
+        baseline_demand : float
+            _description_
+        baseline_cost : float
+            _description_
         """
-        self.beta = beta
-        self.unit_cost = unit_cost
-        self.coop_effect_x, self.coop_effect_y = coop_effects
-        self.coop_cost_x, self.coop_cost_y = coop_costs
+        self.model = cournot_model
 
-    def calculate_profits(self, scenario: str) -> tuple[float, float]:
-        """Calculate profits for the provided scenario with the given parameters of the model."""
-        if scenario == "CC":
-            self.retailer_x = Retailer(
-                self.unit_cost, self.coop_cost_x, self.coop_effect_x
-            )
-            self.retailer_y = Retailer(
-                self.unit_cost, self.coop_cost_y, self.coop_effect_y
-            )
-        elif scenario == "CD":
-            self.retailer_x = Retailer(
-                self.unit_cost, self.coop_cost_x, self.coop_effect_x
-            )
-            self.retailer_y = Retailer(self.unit_cost, 0.0, self.coop_effect_y)
-        elif scenario == "DC":
-            self.retailer_x = Retailer(self.unit_cost, 0.0, self.coop_effect_x)
-            self.retailer_y = Retailer(
-                self.unit_cost, self.coop_cost_y, self.coop_effect_y
-            )
-        elif scenario == "DD":
-            self.retailer_x = Retailer(self.unit_cost, 0.0, 0.0)
-            self.retailer_y = Retailer(self.unit_cost, 0.0, 0.0)
-        else:
-            raise ValueError(
-                f"scenario should be either of: CC, DC, CD, DD. Got: {scenario}"
-            )
+    def get_demand_boost(self, theta: float, theta_other: float) -> float:
+        """"""
+        return self.model.demand_boost * (
+            np.cos(theta / 2) ** 2 + np.cos(theta_other / 2) ** 2
+        )
 
-        self.price_x = self.retailer_x.calculate_optimal_retail_price(self.beta)
-        self.price_y = self.retailer_y.calculate_optimal_retail_price(self.beta)
-        # print("Prices: ", self.price_x, self.price_y)
+    def get_cost_increase(self, theta: float) -> float:
+        """"""
+        return self.model.cost_increase * np.cos(theta / 2) ** 2
 
-        self.demand_x = self.retailer_x.calculate_demand(self.beta, self.price_y)
-        self.demand_y = self.retailer_y.calculate_demand(self.beta, self.price_x)
-        # print("Demand: ", self.demand_x, self.demand_y)
+    def calculate_best_quantity(self, theta: float, theta_other: float) -> float:
+        """"""
+        denom = 3 * self.model.demand_slope
+        nom = (
+            self.model.baseline_demand
+            + self.get_demand_boost(theta, theta_other)
+            - self.model.baseline_cost
+            - self.get_cost_increase(theta)
+        )
+        return nom / denom
 
-        self.profit_x = self.retailer_x.calculate_profit()
-        self.profit_y = self.retailer_y.calculate_profit()
-
-        return self.profit_x, self.profit_y
-
-    def prepare_payoff_matrix(self) -> tuple[NDArray, NDArray]:
-        """Calculate expected profits for each scenario and collect them in a matrix."""
-        # print("-------- Both Cooperate --------")
-        x11, y11 = self.calculate_profits("CC")
-        # print("-------- 1st Cooperate 2nd Deceit--------")
-        x12, y12 = self.calculate_profits("CD")
-        # print("-------- 1st Deceit 2nd Cooperate--------")
-        x21, y21 = self.calculate_profits("DC")
-        # print("-------- Both Deceit --------")
-        x22, y22 = self.calculate_profits("DD")
-
-        return np.array([x11, x12, x21, x22]), np.array([y11, y12, y21, y22])
+    def calculate_best_profit(self, theta: float, theta_other: float) -> float:
+        """"""
+        denom = 9 * self.model.demand_slope
+        nom = (
+            self.model.baseline_demand
+            + self.get_demand_boost(theta, theta_other)
+            - self.model.baseline_cost
+            - self.get_cost_increase(theta)
+        ) ** 2
+        return nom / denom
 
 
+class CournotDuopoly:
+    """_summary_"""
 
-if __name__ == "__main__":
-    from qrumi.quantum import QuantumDecision, QuantumState
+    def __init__(self, cournot_model: CournotModel | None = None) -> None:
+        """_summary_"""
+        self.cournot_model = cournot_model
+        if self.cournot_model is None:
+            self.cournot_model = CournotModel(100, 20, 1.5, 20, 30)
+        self.coop_theta = 0.0
+        self.defect_theta = np.pi
+        self.firm1 = Firm(self.cournot_model)
+        self.firm2 = Firm(self.cournot_model)
 
-    basic_model = InvestmentModel()
-    payoff_x, payoff_y = basic_model.prepare_payoff_matrix()
-    # print(payoff_x)
-    # print(payoff_y)
-    payoff_x = np.array([[3,0],[5,1]])
+    def calculate_payoff_matrix(self, firm: str = "1") -> np.ndarray:
+        """_summary_
 
-    coop = QuantumDecision(0, 0)
-    defect = QuantumDecision(np.pi, 0)
-    quantum = QuantumDecision(0, np.pi / 2.0)
-    decs = [coop, defect, quantum]
-    labels = ["Coop", "Defect", "Quantum"]
-    for dec_x, lab_x in zip(decs, labels):
-        for dec_y, lab_y in zip(decs, labels):
-            qstate = QuantumState(np.pi / 2.0, [dec_x, dec_y])
-            qstate.calculate_quantum_state()
-            payoff_c = qstate.calculate_expected_payoff(payoff_x)
-            print(f"{lab_x}-{lab_y} payoff:", payoff_c)
+        Returns
+        -------
+        np.ndarray
+            _description_
+        """
+        cc = self.firm1.calculate_best_profit(self.coop_theta, self.coop_theta)
+        cd = self.firm1.calculate_best_profit(self.coop_theta, self.defect_theta)
+        dc = self.firm1.calculate_best_profit(self.defect_theta, self.coop_theta)
+        dd = self.firm1.calculate_best_profit(self.defect_theta, self.defect_theta)
+        return np.array([[cc, cd], [dc, dd]])
 
-    # print("Total payoff:", payoff_q + payoff_c + payoff_d)
+    def verify_dilemma(self) -> bool:
+        """_summary_
+
+        Returns
+        -------
+        bool
+            _description_
+        """
+        return True

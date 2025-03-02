@@ -1,173 +1,166 @@
 """"""
 
-import matplotlib
+import matplotlib.ticker as tck
 from matplotlib.axes import Axes
-import matplotlib.colorbar
-from matplotlib.figure import Figure
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.colors import Normalize
 
-from qrumi.cournot import InvestmentModel
+from qrumi.cournot import CournotDuopoly, CournotModel
 from qrumi.quantum import QuantumDecision, QuantumState
 
 
 class Experiment:
     """"""
 
-    def __init__(self, beta: float = 0.5, gamma: float = np.pi / 2.0) -> None:
-        self.beta = beta
+    def __init__(self, gamma: float = np.pi / 2.0) -> None:
         self.gamma = gamma
-        self.decisions = self.define_decisions()
+        self.gamma_default = gamma
+        self.decisions_x = self.define_decisions()
+        self.decisions_y = self.define_decisions()
+        self.cournot = CournotDuopoly()
 
-    def define_decisions(self) -> dict[str, QuantumDecision]:
+    def define_decisions(self, classical: bool = False) -> dict[str, QuantumDecision]:
         """"""
-        return {
+        main_decisions = {
             "C": QuantumDecision(0, 0),
             "D": QuantumDecision(np.pi, 0),
-            "Q": QuantumDecision(0, np.pi / 2.0),
         }
+        if not classical:
+            main_decisions.update({"Q": QuantumDecision(0, np.pi / 2.0)})
+        return main_decisions
 
-    def calculate_model_per_player(self, player: str = "x") -> np.ndarray:
+    def calculate_min_expected_outcome(self) -> float:
         """"""
-        basic_model = InvestmentModel(self.beta)
-        payoff_x, payoff_y = basic_model.prepare_payoff_matrix()
-        if player == "x":
-            payoff_mat = payoff_x
-        elif player == "y":
-            payoff_mat = payoff_y
-        else:
-            raise ValueError("player should be x or y.")
+        res_payoffs = self.calculate_outcome_matrix()
+        return float(np.max(np.min(res_payoffs, axis=0)))
+
+    def calculate_outcome_matrix(self) -> np.ndarray:
+        """_summary_
+
+        Returns
+        -------
+        np.ndarray
+            _description_
+        """
+        payoff_mat = self.cournot.calculate_payoff_matrix()
+        print(payoff_mat)
         # payoff_mat = np.array([[3, 0], [5, 1]])
 
         res_mat = []
-        for key_x, dec_x in self.decisions.items():
+        for key_x, dec_x in self.decisions_x.items():
             res = []
-            for key_y, dec_y in self.decisions.items():
+            for key_y, dec_y in self.decisions_y.items():
                 qstate = QuantumState(self.gamma, [dec_x, dec_y])
                 qstate.calculate_quantum_state()
                 payoff = qstate.calculate_expected_payoff(payoff_mat)
-                print(f"{key_x}-{key_y} payoff:", payoff)
                 res.append(payoff)
             res_mat.append(res)
 
-        return np.array(res_mat)
+        return np.array(res_mat).real
 
-    def visualize_decisions(self, fig: Figure, ax: Axes) -> Axes:
+    def experiment_gammas(
+        self, gammas: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """"""
+        if gammas is None:
+            gammas = np.arange(0, (np.pi / 2) + 0.001, np.pi / 60)
+
+        results = []
+        for gamma in gammas:
+            self.gamma = gamma
+            min_pay = exp.calculate_min_expected_outcome()
+            results.append(min_pay)
+        return np.array(results), gammas
+
+    def experiment_cournot(self):
+        """_summary_"""
+        # CournotModel(100, 20, 1.5, 20, 30)
+        self.cournot = CournotDuopoly()
+        results, gammas = self.experiment_gammas()
+        self.visualize_gamma_experiment(results, gammas)
+
+        cournot_model = CournotModel(100, 20, 1.5, 29, 30)
+        self.cournot = CournotDuopoly(cournot_model)
+        results, gammas = self.experiment_gammas()
+        self.visualize_gamma_experiment(results, gammas)
+
+        cournot_model = CournotModel(100, 20, 1.5, 16, 30)
+        self.cournot = CournotDuopoly()
+        self.experiment_gammas()
+        self.visualize_gamma_experiment(results, gammas)
+
+    def visualize_outcome_matrix(
+        self, outcomes: np.ndarray, ax: Axes | None = None
+    ) -> Axes:
         """"""
         labels = ["Q", "D", "C"]
-        # print("-------- Player Cooperates --------")
-        payoffs = self.calculate_model_per_player().real
-        print(payoffs)
-
         ax = sns.heatmap(
-            payoffs,
+            outcomes,
             xticklabels=labels,
             yticklabels=labels,
             ax=ax,
+            linewidths=1.0,
             cmap="RdYlGn",
             annot=True,
             square=True,
             cbar=False,
-            vmin=-1,
-            vmax=1,
+            vmin=-1000,
+            vmax=1000,
+            # robust=True,
+            fmt="g",
         )
         if self.gamma != 0.0:
             denom = np.pi / self.gamma
-            ax.set_title(rf"X's payoffs $\beta={self.beta}, \gamma=\pi/{denom}$")
+            ax.set_title(rf"X's payoffs, $\gamma=\pi/{denom}$")
         else:
-            ax.set_title(rf"X's payoffs $\beta={self.beta}, \gamma=0$")
+            ax.set_title(rf"X's payoffs, $\gamma=0$")
         ax.set_xlabel("X's decisions")
         ax.set_ylabel("Y's decisions")
         return ax
 
-    def run(self) -> None:
-        """"""
-        self.visualize_decisions()
+    def visualize_gamma_experiment(
+        self, results: np.ndarray, gammas: np.ndarray
+    ) -> None:
 
-
-class ExperimentSet:
-    """"""
-
-    def __init__(
-        self, gammas: np.ndarray | None = None, betas: np.ndarray | None = None
-    ):
-        if gammas is None:
-            gammas = np.arange(0, (np.pi / 2) + 0.001, np.pi / 4)
-        if betas is None:
-            betas = np.arange(0, 1, 0.49)
-        self.gammas = gammas
-        self.betas = betas
-        print(self.betas)
-        print(self.gammas)
-
-    def calculate_payoffs_per_strategy(self, experiment: Experiment) -> np.ndarray:
-        """"""
-        payoffs_c = experiment.calculate_model_per_player("x")
-        payoffs_d = experiment.calculate_model_per_player("y")
-        # payoffs_q = experiment.calculate_model_per_player("Q")
-        return np.array([payoffs_c, payoffs_d])
-
-    def visualize_results(self, payoffs: np.ndarray) -> None:
-        """"""
-        sns.lineplot(payoffs)
+        fig, ax = plt.subplots(1, 1)
+        # fig.set_size_inches((16, 9))
+        sns.lineplot(x=gammas / np.pi, y=results, ax=ax)
+        sns.scatterplot(x=gammas / np.pi, y=results, ax=ax)
+        # ax.set_title(
+        #     "Effect of quantum entanglement\non minimum expected payoff for retailer X"
+        # )
+        ax.set_xlabel("$\gamma$")
+        ax.set_ylabel("Minimum expected payoff")
+        ax.xaxis.set_major_formatter(tck.FormatStrFormatter("%g$\pi$"))
+        ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.05))
         plt.show()
+        plt.tight_layout()
+        # plt.savefig("min_payoff.png", dpi=300)
+        plt.close()
 
-    def experiment_betas(self, gamma: float = np.pi / 2) -> np.ndarray:
-        """"""
-        results = []
-        fig, ax = plt.subplots(1, 3)
-        fig.set_size_inches((16, 9))
-        fig.set_dpi(300)
-        for i, beta in enumerate(self.betas):
-            exp = Experiment(beta=beta, gamma=gamma)
-            # payoffs = self.calculate_payoffs_per_strategy(exp)
-            exp.visualize_decisions(fig, ax[i])
-            # results.append(payoffs)
+    def visualize_multiple_outcomes(self) -> None:
+        gammas = np.arange(0, (np.pi / 2) + 0.001, np.pi / 4)
+
+        fig, ax = plt.subplots(1, len(gammas))
+        # fig.set_size_inches((16, 9))
+
+        for i, gamma in enumerate(gammas):
+            self.gamma = gamma
+            outcomes = self.calculate_outcome_matrix()
+            exp.visualize_outcome_matrix(outcomes, ax[i])
         cbar_ax = fig.colorbar(
-            plt.cm.ScalarMappable(cmap="RdYlGn", norm=Normalize(vmin=-1, vmax=1)),
+            plt.cm.ScalarMappable(cmap="RdYlGn", norm=Normalize(vmin=-1000, vmax=1000)),
             ax=ax,
             location="right",
             fraction=0.02,
             pad=0.1,
         )
-        plt.savefig("./figure.png")
-        return np.array(results)
-
-    def experiment_gammas(self, beta: float = 0.5) -> np.ndarray:
-        """"""
-        results = []
-        fig, ax = plt.subplots(1, 3)
-        fig.set_size_inches((16, 9))
-        fig.set_dpi(300)
-        for i, gamma in enumerate(self.gammas):
-            exp = Experiment(beta=beta, gamma=gamma)
-            # payoffs = self.calculate_payoffs_per_strategy(exp)
-            exp.visualize_decisions(fig, ax[i])
-            # results.append(payoffs)
-        cbar_ax = fig.colorbar(
-            plt.cm.ScalarMappable(cmap="RdYlGn", norm=Normalize(vmin=-1, vmax=1)),
-            ax=ax,
-            location="right",
-            fraction=0.02,
-            pad=0.1,
-        )
-        # plt.show()
-        plt.savefig("./figure.png")
-        return np.array(results)
-
-    def run(self) -> None:
-        """"""
-        results = self.experiment_betas()
-        # self.visualize_results(res)
-
-        # results = self.experiment_gammas()
-        # self.visualize_results(res)
+        plt.show()
+        # plt.savefig("./figure.png", dpi=300)
 
 
 if __name__ == "__main__":
-    # exp = Experiment(0.99, np.pi / 2)
-    # exp.run()
-    exp_set = ExperimentSet()
-    exp_set.run()
+    exp = Experiment(np.pi / 2)
+    exp.experiment_cournot()
