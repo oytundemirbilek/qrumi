@@ -1,10 +1,10 @@
-"""_summary_"""
+"""Module to simulate Cournot duopoly competition model."""
 
 import numpy as np
 
 
 class CournotModel:
-    """"""
+    """Class to represent the demand curve parameters for the Cournot model."""
 
     def __init__(
         self,
@@ -19,45 +19,84 @@ class CournotModel:
         self.demand_slope = demand_slope  # b
         self.demand_boost = demand_boost  # d0
         self.cost_increase = cost_increase  # k0
+        if not self.verify_dilemma():
+            raise UserWarning(
+                "These parameters are not going to cause a Prisoner's Dilemma."
+            )
 
     def verify_dilemma(self) -> bool:
-        """_summary_
+        """Verify if the selected parameters result in a Prisoner's Dilemma.
 
         Returns
         -------
         bool
-            _description_
         """
-        return True
+        pd = True
+        if (
+            self.demand_boost > self.cost_increase / 2
+            and self.demand_boost < self.cost_increase
+        ):
+            pd = True
+        else:
+            return False
+        return pd
 
 
 class Firm:
-    """_summary_"""
+    """Class to represent a firm and its decisions."""
 
     def __init__(self, cournot_model: CournotModel) -> None:
-        """_summary_
-
-        Parameters
-        ----------
-        baseline_demand : float
-            _description_
-        baseline_cost : float
-            _description_
-        """
         self.model = cournot_model
 
     def get_demand_boost(self, theta: float, theta_other: float) -> float:
-        """"""
+        """Calculate and return the potential demand boost effect.
+
+        Parameters
+        ----------
+        theta : float
+            An angle represents the firm's decision in quantum game.
+        theta_other : float
+            An angle represents the other firm's decision in quantum game.
+
+        Returns
+        -------
+        float
+            Demand boost when the decision theta and theta_other is made.
+        """
         return self.model.demand_boost * (
             np.cos(theta / 2) ** 2 + np.cos(theta_other / 2) ** 2
         )
 
     def get_cost_increase(self, theta: float) -> float:
-        """"""
+        """Calculate and return the potential cost increase.
+
+        Parameters
+        ----------
+        theta : float
+            An angle represents the firm's decision in quantum game.
+
+        Returns
+        -------
+        float
+            Cost increase when the decision theta is made.
+        """
         return self.model.cost_increase * np.cos(theta / 2) ** 2
 
     def calculate_best_quantity(self, theta: float, theta_other: float) -> float:
-        """"""
+        """Calculate the best response of how much quantity to produce for the Cournot firm.
+
+        Parameters
+        ----------
+        theta : float
+            An angle represents the firm's decision in quantum game.
+        theta_other : float
+            An angle represents the other firm's decision in quantum game.
+
+        Returns
+        -------
+        float
+            Quantity to produce when the decision theta and theta_other is made.
+        """
         denom = 3 * self.model.demand_slope
         nom = (
             self.model.baseline_demand
@@ -68,7 +107,20 @@ class Firm:
         return nom / denom
 
     def calculate_best_profit(self, theta: float, theta_other: float) -> float:
-        """"""
+        """Calculate the profit to be made when the best response quantity is produced.
+
+        Parameters
+        ----------
+        theta : float
+            An angle represents the firm's decision in quantum game.
+        theta_other : float
+            An angle represents the other firm's decision in quantum game.
+
+        Returns
+        -------
+        float
+            Best profit to make when the decision theta and theta_other is made.
+        """
         denom = 9 * self.model.demand_slope
         nom = (
             self.model.baseline_demand
@@ -80,10 +132,9 @@ class Firm:
 
 
 class CournotDuopoly:
-    """_summary_"""
+    """Class to represent a Cournot system with two firms."""
 
     def __init__(self, cournot_model: CournotModel | None = None) -> None:
-        """_summary_"""
         self.cournot_model = cournot_model
         if self.cournot_model is None:
             self.cournot_model = CournotModel(100, 20, 1.5, 20, 30)
@@ -93,25 +144,30 @@ class CournotDuopoly:
         self.firm2 = Firm(self.cournot_model)
 
     def calculate_payoff_matrix(self, firm: str = "1") -> np.ndarray:
-        """_summary_
+        """Calculate the payoff matrix for the defined Cournot model.
 
         Returns
         -------
         np.ndarray
-            _description_
         """
         cc = self.firm1.calculate_best_profit(self.coop_theta, self.coop_theta)
         cd = self.firm1.calculate_best_profit(self.coop_theta, self.defect_theta)
         dc = self.firm1.calculate_best_profit(self.defect_theta, self.coop_theta)
         dd = self.firm1.calculate_best_profit(self.defect_theta, self.defect_theta)
-        return np.array([[cc, cd], [dc, dd]])
+        payoff_mat = np.array([[cc, cd], [dc, dd]])
+        self.verify_dilemma(payoff_mat)
+        return payoff_mat
 
-    def verify_dilemma(self) -> bool:
-        """_summary_
+    @staticmethod
+    def verify_dilemma(payoff_mat: np.ndarray) -> bool:
+        """Verify if the given payoff matrix result in a Prisoner's Dilemma.
 
         Returns
         -------
         bool
-            _description_
         """
-        return True
+        t = payoff_mat[1, 0]
+        r = payoff_mat[0, 0]
+        p = payoff_mat[1, 1]
+        s = payoff_mat[0, 1]
+        return t > r > p > s
