@@ -193,7 +193,7 @@ class Experiment:
         # fig.set_size_inches((16, 9))
 
         for i, gamma in enumerate(gammas):
-            self.gamma = gamma
+            self.gamma = float(gamma)
             outcomes = self.calculate_outcome_matrix()
             exp.visualize_outcome_matrix(outcomes, ax[i])
         fig.colorbar(
