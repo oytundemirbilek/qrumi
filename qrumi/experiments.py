@@ -3,11 +3,12 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
 
-from qrumi.cournot import CournotDuopoly, CournotModel
+from qrumi.cournot import CournotDuopoly, CournotParameters
 from qrumi.quantum import QuantumDecision, QuantumState
 
 
@@ -20,6 +21,7 @@ class Experiment:
         self.decisions_x = self.define_decisions()
         self.decisions_y = self.define_decisions()
         self.cournot = CournotDuopoly()
+        self.payoff_mat: np.ndarray | None = None
 
     @staticmethod
     def define_decisions(classical: bool = False) -> dict[str, QuantumDecision]:
@@ -50,17 +52,18 @@ class Experiment:
         -------
         np.ndarray
         """
-        payoff_mat = self.cournot.calculate_payoff_matrix()
+        self.payoff_mat = self.cournot.calculate_payoff_matrix()
         # print(payoff_mat)
         # payoff_mat = np.array([[3, 0], [5, 1]])
 
         res_mat = []
-        for _key_x, dec_x in self.decisions_x.items():
+        for key_x, dec_x in self.decisions_x.items():
             res = []
-            for _key_y, dec_y in self.decisions_y.items():
+            for key_y, dec_y in self.decisions_y.items():
                 qstate = QuantumState(self.gamma, [dec_x, dec_y])
                 qstate.calculate_quantum_state()
-                payoff = qstate.calculate_expected_payoff(payoff_mat)
+                payoff = qstate.calculate_expected_payoff(self.payoff_mat)
+                print(f"{key_x} - {key_y}: {payoff}")
                 res.append(payoff)
             res_mat.append(res)
 
@@ -76,9 +79,7 @@ class Experiment:
         res_payoffs = self.calculate_outcome_matrix()
         return float(np.max(np.min(res_payoffs, axis=0)))
 
-    def experiment_gammas(
-        self, gammas: np.ndarray | None = None
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def experiment_gammas(self, gammas: np.ndarray | None = None) -> pd.DataFrame:
         """Run an experiment for different gammas to observe quantum entanglement effect.
 
         Parameters
@@ -88,7 +89,7 @@ class Experiment:
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
+        pd.DataFrame
             Results and gammas.
         """
         if gammas is None:
@@ -96,32 +97,12 @@ class Experiment:
 
         results = []
         for gamma in gammas:
-            self.gamma = gamma
+            self.gamma = float(gamma)
+            print(rf"Gamma: {self.gamma / np.pi} pi")
             min_pay = exp.calculate_min_expected_outcome()
             results.append(min_pay)
-        return np.array(results), gammas
-
-    def experiment_cournot(self) -> None:
-        """Run an experiment with multiple set of Cournot parameters."""
-        cournot_model = CournotModel(100, 20, 1.5, 20, 30)
-        self.cournot = CournotDuopoly(cournot_model)
-        results, gammas = self.experiment_gammas()
-        self.visualize_gamma_experiment(results, gammas)
-
-        cournot_model = CournotModel(100, 20, 1.5, 29, 30)
-        self.cournot = CournotDuopoly(cournot_model)
-        results, gammas = self.experiment_gammas()
-        self.visualize_gamma_experiment(results, gammas)
-
-        cournot_model = CournotModel(100, 20, 1.5, 16, 30)
-        self.cournot = CournotDuopoly(cournot_model)
-        results, gammas = self.experiment_gammas()
-        self.visualize_gamma_experiment(results, gammas)
-
-        cournot_model = CournotModel(20, 5, 1.5, 2, 3)
-        self.cournot = CournotDuopoly(cournot_model)
-        results, gammas = self.experiment_gammas()
-        self.visualize_gamma_experiment(results, gammas)
+        print(self.payoff_mat)
+        return pd.DataFrame({"MinimumPayoffs": results, "Gammas": gammas / np.pi})
 
     def visualize_outcome_matrix(
         self, outcomes: np.ndarray, ax: Axes | None = None
@@ -166,30 +147,42 @@ class Experiment:
         return axes
 
     @staticmethod
-    def visualize_gamma_experiment(results: np.ndarray, gammas: np.ndarray) -> None:
+    def visualize_gamma_experiment(
+        results: pd.DataFrame,
+        title: str | None = None,
+        show: bool = True,
+    ) -> None:
         """Visualize the results of the gamme experiment.
 
         Parameters
         ----------
         results : np.ndarray
             Results from the gamma experiment.
-        gammas : np.ndarray
-            Gammas from the gamma experiment.
         """
         _fig, ax = plt.subplots(1, 1)
         # fig.set_size_inches((16, 9))
-        sns.lineplot(x=gammas / np.pi, y=results, ax=ax)
-        sns.scatterplot(x=gammas / np.pi, y=results, ax=ax)
-        # ax.set_title(
-        #     "Effect of quantum entanglement\non minimum expected payoff for retailer X"
-        # )
+        sns.lineplot(results, ax=ax, x="Gammas", y="MinimumPayoffs", hue="Experiment")
+        sns.scatterplot(
+            results,
+            ax=ax,
+            x="Gammas",
+            y="MinimumPayoffs",
+            hue="Experiment",
+            legend=False,
+        )
+        if title is not None:
+            ax.set_title(title)
         ax.set_xlabel(r"$\gamma$")
         ax.set_ylabel("Minimum expected payoff")
         ax.xaxis.set_major_formatter(tck.FormatStrFormatter(r"%g$\pi$"))
         ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.05))
-        plt.show()
         plt.tight_layout()
-        # plt.savefig("min_payoff.png", dpi=300)
+        if show:
+            plt.show()
+        elif title is not None:
+            plt.savefig(f"figures/{title}.png", dpi=300)
+        else:
+            plt.savefig("figures/gamma_experiment.png", dpi=300)
         plt.close()
 
     def visualize_multiple_outcomes(self) -> None:
@@ -213,7 +206,100 @@ class Experiment:
         plt.show()
         # plt.savefig("./figure.png", dpi=300)
 
+    def experiment_demand_slope(self, show: bool = True) -> None:
+        """Run an experiment with multiple set of Cournot parameters."""
+        all_results = []
+
+        cournot_model = CournotParameters(100, 20, 1.5, 20, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "Default demand slope (b=1.5)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 20, 2.5, 29, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "High demand slope (b=2.5)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 20, 0.75, 16, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "Low demand slope (b=0.75)"
+        all_results.append(results)
+
+        result_df = pd.concat(all_results)
+        self.visualize_gamma_experiment(result_df, title="demand_slopes", show=show)
+
+    def experiment_demand_boost(self, show: bool = True) -> None:
+        """Run an experiment with multiple set of Cournot parameters."""
+        all_results = []
+
+        cournot_model = CournotParameters(100, 20, 1.5, 16, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = r"Low demand boost ($d_0$=16)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 20, 1.5, 20, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = r"Default demand boost ($d_0$=20)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 20, 1.5, 29, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = r"High demand boost ($d_0$=29)"
+        all_results.append(results)
+
+        result_df = pd.concat(all_results)
+        self.visualize_gamma_experiment(result_df, title="demand_boosts", show=show)
+
+    def experiment_baseline_cost(self, show: bool = True) -> None:
+        """Run an experiment with multiple set of Cournot parameters."""
+        all_results = []
+
+        cournot_model = CournotParameters(100, 20, 1.5, 20, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "Low baseline cost (c=20)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 50, 1.5, 20, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "High baseline cost (c=50)"
+        all_results.append(results)
+
+        cournot_model = CournotParameters(100, 80, 1.5, 20, 30)
+        print(cournot_model)
+        self.cournot = CournotDuopoly(cournot_model)
+        results = self.experiment_gammas()
+        results["Experiment"] = "Extreme baseline cost (c=80)"
+        all_results.append(results)
+
+        result_df = pd.concat(all_results)
+        self.visualize_gamma_experiment(result_df, title="baseline_costs", show=show)
+
+    def experiment_cournot(self, show: bool = True) -> None:
+        """Run an experiment with multiple set of Cournot parameters."""
+        print("Demand slope experiment")
+        self.experiment_demand_slope(show)
+        print("Demand boost experiment")
+        self.experiment_demand_boost(show)
+        print("Baseline cost experiment")
+        self.experiment_baseline_cost(show)
+
 
 if __name__ == "__main__":
     exp = Experiment(np.pi / 2)
-    exp.experiment_cournot()
+    exp.experiment_cournot(False)
